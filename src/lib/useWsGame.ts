@@ -95,93 +95,57 @@ export function useWsGame() {
     };
 
     ws.onmessage = (ev) => {
-      const msg = (() => {
-        try {
-          return JSON.parse(ev.data);
-        } catch {
-          return {};
-        }
-      })();
+      const msg = JSON.parse(ev.data);
+
+      const getState = () => msg.payload ?? msg.state ?? null;
 
       switch (msg.type) {
-        /* ---------- auth handshake ---------- */
-        case "hello_ok": {
-          // we are authenticated with the WS server
+        case "hello_ok":
+          // <-- this resolves ensureSocket()'s auth wait
           resolveAuthRef.current?.();
-          resolveAuthRef.current = null;
-          rejectAuthRef.current = null;
-          // don't change status here; let lobby/game drive it
           return;
-        }
-        case "error": {
-          if (msg.error === "auth_failed") {
-            rejectAuthRef.current?.(new Error("auth_failed"));
-            rejectAuthRef.current = null;
-            resolveAuthRef.current = null;
-            try {
-              ws.close();
-            } catch { }
-            setStatus("idle");
-          } else {
-            console.error("WS error:", msg.error);
-          }
-          return;
-        }
 
-        /* ---------- lobby messages ---------- */
-        case "room_created": {
+        case "room_created":
           setRoomCode(msg.code || msg.roomCode || null);
           setStatus("waiting");
           return;
-        }
-        case "lobby_update": {
-          setUsers(msg.users ?? []);
-          if (msg.code || msg.roomCode)
-            setRoomCode(msg.code ?? msg.roomCode);
-          return;
-        }
 
-        /* ---------- match lifecycle ---------- */
+        case "lobby_update":
+          setUsers(msg.users ?? []);
+          if (msg.code || msg.roomCode) setRoomCode(msg.code ?? msg.roomCode);
+          return;
+
         case "match_started": {
-          // optional server payload state
-          const next = (msg.payload ?? msg.state ?? null) as GameState | null;
+          const next = getState();
           setStatus("playing");
           if (next) setState(next);
           return;
         }
 
         case "state": {
-          const next = (msg.payload ?? msg.state ?? null) as GameState | null;
+          const next = getState();
           if (next) {
-            setState((prev) => {
-              const merged: GameState = {
-                ...next,
-                // keep overallWinner if server omitted it
-                overallWinner: next.overallWinner ?? prev?.overallWinner ?? null,
-              };
-              return merged;
-            });
-            if (next.ended) setStatus("ended");
+            setState(next);
+            if (next.ended) setStatus("ended");   // <-- flip UI when server pushes an ended state
           }
           return;
         }
 
         case "game_over": {
-          // winner broadcast
+          // server announces the winner explicitly
           setStatus("ended");
-          setState((prev) =>
-            prev
-              ? {
-                ...prev,
-                ended: true,
-                overallWinner: msg.winner ?? prev.overallWinner ?? null,
-              }
-              : prev
+          setState(prev =>
+            prev ? { ...prev, ended: true, overallWinner: msg.winner ?? prev.overallWinner } : prev
           );
           return;
         }
+
+        case "error":
+          console.error("WS error:", msg.error);
+          return;
       }
     };
+
 
     ws.onclose = () => {
       wsRef.current = null;

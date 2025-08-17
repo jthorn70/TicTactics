@@ -160,27 +160,22 @@ export default function MultiplayerCanvas({
 
 
         // ---------- winner overlay ----------
+        // Winner overlay
         if (st.ended) {
-          // prefer server-provided winner; otherwise try to compute
-          const winner = (st as any).overallWinner ?? calcBigWinner(st.winnerBoards);
-
-          // dim the board
           s.noStroke();
-          s.fill(0, 0, 0, 160);
+          s.fill(0, 0, 0, 140);
           s.rect(0, 0, W, H);
 
-          // winner text
           s.fill(255);
           s.textAlign(s.CENTER, s.CENTER);
           s.textSize(36);
-          const line = winner ? `Player ${winner} wins!` : "Game Over";
-          s.text(line, W / 2, H / 2);
-
-          // small hint
-          s.textSize(14);
-          s.fill(230);
-          s.text("Refresh or leave lobby to start a new match", W / 2, H / 2 + 36);
+          const msg =
+            st.overallWinner === "X" || st.overallWinner === "O"
+              ? `Player ${st.overallWinner} wins!`
+              : "Game Over!";
+          s.text(msg, W / 2, H / 2);
         }
+
       }
 
       (s as any).__redrawAll = drawAll;
