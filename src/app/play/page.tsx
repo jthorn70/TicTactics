@@ -3,10 +3,11 @@ import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { useWsGame } from "@/lib/useWsGame";
-import dynamic from "next/dynamic";
+import Nextdynamic from "next/dynamic";
 import Button from "@/components/ui/Button";
-
-const MultiplayerCanvas = dynamic(() => import("@/components/MultiplayerCanvas"), { ssr: false });
+export const dynamic = "force-dynamic";      // route option (string)
+export const fetchCache = "force-no-store";  // optional
+const MultiplayerCanvas = Nextdynamic(() => import("@/components/MultiplayerCanvas"), { ssr: false });
 
 export default function PlayPage() {
   const [authed, setAuthed] = useState(false);
