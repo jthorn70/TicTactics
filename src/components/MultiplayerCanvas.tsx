@@ -63,19 +63,24 @@ export default function MultiplayerCanvas({
 
       s.mousePressed = () => {
         const st = stateRef.current;
-        if (!st || st.ended) return; // no clicks after game over
+        if (!st || st.ended) return;
 
-        const bx = Math.floor(s.mouseX / (W / 3));
-        const by = Math.floor(s.mouseY / (H / 3));
-        if (bx < 0 || bx > 2 || by < 0 || by > 2) return;
-        const boardIndex = bx * 3 + by;
+        // big board column & row
+        const colB = Math.floor(s.mouseX / (W / 3));
+        const rowB = Math.floor(s.mouseY / (H / 3));
+        if (colB < 0 || colB > 2 || rowB < 0 || rowB > 2) return;
 
-        const cx = Math.floor((s.mouseX - bx * (W / 3)) / (W / 9));
-        const cy = Math.floor((s.mouseY - by * (H / 3)) / (H / 9));
-        const cellIndex = cx * 3 + cy;
+        // row-major index for the mini-board
+        const boardIndex = rowB * 3 + colB;
+
+        // local cell column & row
+        const col = Math.floor((s.mouseX - colB * (W / 3)) / (W / 9));
+        const row = Math.floor((s.mouseY - rowB * (H / 3)) / (H / 9));
+        const cellIndex = row * 3 + col;   // row-major
 
         onCellClick(boardIndex, cellIndex);
       };
+
 
       function drawAll() {
         // instance may be gone
@@ -89,10 +94,12 @@ export default function MultiplayerCanvas({
 
         // draw 9 mini-boards
         for (let bi = 0; bi < 9; bi++) {
-          const gx = Math.floor(bi / 3);
-          const gy = bi % 3;
-          const ox = gx * bigSize;
-          const oy = gy * bigSize;
+          // instead of gx = Math.floor(bi/3), gy = bi%3
+          const colB = bi % 3;
+          const rowB = Math.floor(bi / 3);
+          const ox = colB * bigSize;
+          const oy = rowB * bigSize;
+
 
           // board bg
           s.noStroke();
@@ -111,10 +118,11 @@ export default function MultiplayerCanvas({
           s.textSize(28);
           s.fill(12);
           for (let ci = 0; ci < 9; ci++) {
-            const cx = Math.floor(ci / 3);
-            const cy = ci % 3;
+            const col = ci % 3;
+            const row = Math.floor(ci / 3);
             const m = st.boards[bi][ci];
-            if (m) s.text(m, ox + cx * cellSize + cellSize / 2, oy + cy * cellSize + cellSize / 2);
+            if (m) s.text(m, ox + col * cellSize + cellSize / 2,
+              oy + row * cellSize + cellSize / 2);
           }
 
           // overlay for a won mini-board
@@ -138,19 +146,18 @@ export default function MultiplayerCanvas({
         s.strokeWeight(1);
 
         // active board highlight (if any)
-        if (!st.ended) {
+        if (st.currentBoard === null) {
+          // border around the whole big board...
+        } else {
+          const colHB = st.currentBoard % 3;
+          const rowHB = Math.floor(st.currentBoard / 3);
           s.noFill();
           s.stroke(94, 118, 255);
           s.strokeWeight(3);
-          if (st.currentBoard === null) {
-            s.rect(3, 3, W - 6, H - 6, 8);
-          } else {
-            const gx = Math.floor(st.currentBoard / 3);
-            const gy = st.currentBoard % 3;
-            s.rect(gx * bigSize + 4, gy * bigSize + 4, bigSize - 8, bigSize - 8, 8);
-          }
+          s.rect(colHB * bigSize + 4, rowHB * bigSize + 4, bigSize - 8, bigSize - 8, 8);
           s.strokeWeight(1);
         }
+
 
         // ---------- winner overlay ----------
         if (st.ended) {
