@@ -29,7 +29,7 @@ export function useWsGame() {
 
   useEffect(() => {
     return () => {
-      try { wsRef.current?.close(); } catch {}
+      try { wsRef.current?.close(); } catch { }
       wsRef.current = null;
       openPromiseRef.current = null;
       authPromiseRef.current = null;
@@ -78,44 +78,46 @@ export function useWsGame() {
     ws.onmessage = (ev) => {
       const msg = JSON.parse(ev.data);
 
-      // --- auth gate responses ---
-      if (msg.type === "hello_ok") {
-        resolveAuthRef.current?.();
-        resolveAuthRef.current = null;
-        return;
-      }
-      if (msg.type === "error" && msg.error === "auth_failed") {
-        rejectAuthRef.current?.(new Error("auth_failed"));
-        rejectAuthRef.current = null;
-        return;
-      }
+      // helper: normalize server shapes
+      const getState = () => msg.payload ?? msg.state ?? null;
 
-      // --- normal game messages ---
-      if (msg.type === "state") {
-        setState(msg.payload as GameState);
-        setStatus("playing");
-        return;
-      }
-      if (msg.type === "room_created") {
-        setRoomCode(msg.code as string);
-        setStatus("waiting");
-        return;
-      }
-      if (msg.type === "lobby_update") {
-        setUsers((msg.users ?? []) as LobbyUser[]);
-        if (msg.code && !roomCode) setRoomCode(msg.code);
-        if (!state) setStatus("waiting");
-        return;
-      }
-      if (msg.type === "match_started") {
-        setStatus("playing");
-        return;
-      }
-      if (msg.type === "error") {
-        console.error("WS error:", msg.error);
-        return;
+      switch (msg.type) {
+        case "hello_ok":
+          return;
+
+        case "room_created":
+          setRoomCode(msg.code || msg.roomCode || null);
+          setStatus("waiting");
+          return;
+
+        case "lobby_update":
+          setUsers(msg.users ?? []);
+          if (msg.code || msg.roomCode) setRoomCode(msg.code ?? msg.roomCode);
+          return;
+
+        case "match_started": {
+          const next = getState();
+          setStatus("playing");
+          if (next) setState(next);
+          return;
+        }
+
+        case "state": {
+          const next = getState();
+          if (next) setState(next);
+          return;
+        }
+
+        case "game_over":
+          // optionally surface winner UI
+          return;
+
+        case "error":
+          console.error("WS error:", msg.error);
+          return;
       }
     };
+
 
     ws.onclose = () => {
       setStatus("idle");
@@ -145,11 +147,11 @@ export function useWsGame() {
   }
 
   // public API
-  const findMatch  = async () => { setStatus("queued"); await safeSend({ type: "find_match" }); };
+  const findMatch = async () => { setStatus("queued"); await safeSend({ type: "find_match" }); };
   const createRoom = async () => { await safeSend({ type: "create_room" }); };
-  const joinRoom   = async (code: string) => { await safeSend({ type: "join_room", code: code.trim().toUpperCase() }); };
-  const startGame  = async () => { await safeSend({ type: "start_game" }); };
-  const sendMove   = async (boardIndex: number, cellIndex: number) => {
+  const joinRoom = async (code: string) => { await safeSend({ type: "join_room", code: code.trim().toUpperCase() }); };
+  const startGame = async () => { await safeSend({ type: "start_game" }); };
+  const sendMove = async (boardIndex: number, cellIndex: number) => {
     await safeSend({ type: "move", boardIndex, cellIndex });
   };
 
