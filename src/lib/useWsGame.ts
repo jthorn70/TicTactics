@@ -9,6 +9,7 @@ export type GameState = {
   currentBoard: number | null;
   currentPlayer: "X" | "O";
   ended: boolean;
+  overallWinner: "X" | "O" | null;
   youAre?: "X" | "O";
 };
 
@@ -96,21 +97,24 @@ export function useWsGame() {
           return;
 
         case "match_started": {
-          const next = getState();
+          const next = msg.payload ?? msg.state ?? null;
           setStatus("playing");
           if (next) setState(next);
-          return;
+          break;
         }
-
         case "state": {
-          const next = getState();
+          const next = msg.payload ?? msg.state ?? null;
           if (next) setState(next);
-          return;
+          break;
         }
 
-        case "game_over":
-          // optionally surface winner UI
+
+        case "game_over": {
+          setState(prev =>
+            prev ? { ...prev, ended: true, overallWinner: msg.winner ?? prev.overallWinner } : prev
+          );
           return;
+        }
 
         case "error":
           console.error("WS error:", msg.error);

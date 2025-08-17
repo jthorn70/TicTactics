@@ -345,8 +345,8 @@ export default function GameCanvas() {
                 scores["X"] > scores["O"]
                   ? "X"
                   : scores["O"] > scores["X"]
-                  ? "O"
-                  : null;
+                    ? "O"
+                    : null;
               overallWinner = winner;
             }
           }
