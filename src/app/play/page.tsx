@@ -1,15 +1,31 @@
 "use client";
-import { useEffect, useState } from "react";
+
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import NextDynamic from "next/dynamic";
 import { supabase } from "@/lib/supabaseClient";
 import { useWsGame } from "@/lib/useWsGame";
-import Nextdynamic from "next/dynamic";
 import Button from "@/components/ui/Button";
-export const dynamic = "force-dynamic";      // route option (string)
-export const fetchCache = "force-no-store";  // optional
-const MultiplayerCanvas = Nextdynamic(() => import("@/components/MultiplayerCanvas"), { ssr: false });
 
+// lazy-load p5 canvas (no SSR)
+const MultiplayerCanvas = NextDynamic(
+  () => import("@/components/MultiplayerCanvas"),
+  { ssr: false }
+);
+
+// ---- Wrapper REQUIRED by Next.js so useSearchParams is inside <Suspense> ----
 export default function PlayPage() {
+  return (
+    <Suspense fallback={<div className="p-6">Loading…</div>}>
+      <PlayPageInner />
+    </Suspense>
+  );
+}
+
+function PlayPageInner() {
   const [authed, setAuthed] = useState(false);
   const search = useSearchParams();
   const router = useRouter();
@@ -18,118 +34,128 @@ export default function PlayPage() {
   const hostCode = (search.get("host") || "").toUpperCase();
 
   const {
-    state, status, roomCode, users,
-    findMatch, createRoom, joinRoom, startGame, sendMove
+    state,
+    status,
+    roomCode,
+    users,
+    findMatch,
+    createRoom,
+    joinRoom,
+    startGame,
+    sendMove,
   } = useWsGame();
 
+  // keep local “logged in?” flag in client
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setAuthed(!!data.session));
-    const { data } = supabase.auth.onAuthStateChange((_e, s) => setAuthed(!!s));
+    const { data } = supabase.auth.onAuthStateChange((_e, s) =>
+      setAuthed(!!s)
+    );
     return () => data.subscription.unsubscribe();
   }, []);
 
   // Auto-join if a join code is present
   useEffect(() => {
     if (joinCode) joinRoom(joinCode);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [joinCode]);
+  }, [joinCode, joinRoom]);
 
-  // If we arrive with a host code (from /?host=), make sure we're the host; if not yet, just display it
-  // When server replies with room_created, roomCode will populate anyway.
+  // If we arrive with a host code (?host=), switch to waiting (server will also send lobby_update)
+  useEffect(() => {
+    // no-op: UI already reads roomCode/status from server
+  }, [hostCode]);
 
-  if (!authed) {
-    return (
-      <main className="mx-auto max-w-screen-sm px-4 py-10 text-center space-y-4">
-        <h1 className="text-2xl font-semibold">Log in to play online</h1>
-        <a href="/login"><Button variant="solid">Log in with Discord</Button></a>
-      </main>
-    );
-  }
+  const onCellClick = (b: number, c: number) => {
+    if (status === "playing") sendMove(b, c);
+  };
 
-  const effectiveCode = roomCode || hostCode || joinCode || "";  // show something ASAP
-  const inLobby = status === "waiting" && !state;
-
+  // --- UI ---
   return (
-    <main className="mx-auto max-w-screen-sm px-4 py-6 space-y-4">
-      <h1 className="text-xl font-semibold">Play</h1>
+    <div className="mx-auto max-w-screen-sm px-4 py-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">Play</h1>
+        <div className="text-sm rounded-md border px-2 py-1">
+          Status: <b>{status}</b>
+        </div>
+      </div>
 
-      {inLobby && (
-        <div className="rounded-2xl border border-line bg-white dark:bg-transparent shadow-sm p-4 space-y-3">
-          <div className="text-sm">Lobby Code: <b>{effectiveCode || "…"}</b></div>
+      {/* Lobby panel */}
+      {status !== "playing" && (
+        <div className="rounded-lg border p-4 space-y-3 bg-white/80 dark:bg-zinc-900/40">
+          <div className="flex items-center justify-between">
+            <div className="font-medium">Lobby</div>
+            {roomCode ? (
+              <code className="px-2 py-1 rounded border">{roomCode}</code>
+            ) : null}
+          </div>
 
-          <ul className="text-sm list-disc pl-5 min-h-[1.5rem]">
-            {users.length > 0
-              ? users.map(u => <li key={u.id}>{u.name ?? u.id} <b>({u.role})</b></li>)
-              : <li>Waiting for players…</li>
-            }
-          </ul>
-
-          <div className="flex flex-wrap gap-2">
-            <Button onClick={startGame} disabled={users.length < 2}>
-              {users.length < 2 ? "Waiting for player…" : "Start Game"}
-            </Button>
-
+          <div className="flex gap-2">
+            <Button onClick={findMatch}>Quick Match</Button>
+            <Button onClick={createRoom}>Create Lobby</Button>
             <Button
-              variant="outline"
-              onClick={() =>
-                navigator.clipboard.writeText(`${location.origin}/play?join=${effectiveCode}`)
-              }
+              onClick={() => {
+                const code = prompt("Enter invite code:");
+                if (code) joinRoom(code);
+              }}
+              variant="secondary"
             >
-              Copy Invite Link
+              Join by Code
             </Button>
+            {roomCode && (
+              <Button
+                variant="outline"
+                onClick={() =>
+                  navigator.clipboard.writeText(
+                    `${window.location.origin}/play?join=${roomCode}`
+                  )
+                }
+              >
+                Copy Invite
+              </Button>
+            )}
+          </div>
 
+          <div>
+            <div className="text-xs uppercase tracking-wide text-zinc-500">
+              Players
+            </div>
+            <ul className="text-sm list-disc pl-5 min-h-[1.5rem]">
+              {users.length > 0 ? (
+                users.map((u, i) => (
+                  <li key={`${u.id}-${u.role}-${i}`}>
+                    {u.name ?? u.id} <b>({u.role})</b>
+                  </li>
+                ))
+              ) : (
+                <li>Waiting for players…</li>
+              )}
+            </ul>
+          </div>
+
+          <div className="flex justify-end">
             <Button
-              variant="ghost"
-              onClick={() => navigator.clipboard.writeText(effectiveCode)}
+              onClick={startGame}
+              disabled={!roomCode || users.length < 2}
             >
-              Copy Code
+              Start Game
             </Button>
           </div>
 
-          <p className="text-xs text-muted">
-            Share the link or code with a friend. When both are here, click <b>Start Game</b>.
+          <p className="text-xs text-zinc-500">
+            Tip: Share{" "}
+            <code className="px-1 py-0.5 rounded border">
+              /play?join={roomCode ?? "CODE"}
+            </code>{" "}
+            with your opponent.
           </p>
         </div>
       )}
 
-      {!state && !inLobby && (
-        <div className="rounded-2xl border border-line bg-white dark:bg-transparent shadow-sm p-4 space-y-3">
-          <div className="flex flex-wrap gap-2">
-            <Button variant="solid" onClick={findMatch}>
-              {status === "queued" ? "Queued…" : "Quick Match"}
-            </Button>
-            <Button onClick={async () => { await createRoom(); router.replace("/play"); }}>
-              Create Lobby
-            </Button>
-            <JoinBox onJoin={joinRoom} defaultCode={joinCode} />
-          </div>
+      {/* Game board */}
+      {state && status === "playing" && (
+        <div className="flex justify-center">
+          <MultiplayerCanvas state={state} onCellClick={onCellClick} />
         </div>
       )}
-
-      {state && (
-        <div className="rounded-2xl border border-line bg-white dark:bg-transparent shadow-sm p-4 space-y-3">
-          <div className="text-sm">You are <b>{state.youAre}</b> • Turn: <b>{state.currentPlayer}</b></div>
-          {state && inLobby === false && (
-            <MultiplayerCanvas state={state} onCellClick={(b, c) => sendMove(b, c)} />
-          )}
-        </div>
-      )}
-    </main>
-  );
-}
-
-function JoinBox({ onJoin, defaultCode = "" }: { onJoin: (c: string) => void; defaultCode?: string }) {
-  const [code, setCode] = useState(defaultCode);
-  useEffect(() => setCode(defaultCode), [defaultCode]);
-  return (
-    <div className="flex items-center gap-2">
-      <input
-        value={code}
-        onChange={(e) => setCode(e.target.value.toUpperCase())}
-        placeholder="Room code"
-        className="rounded-md border border-line px-3 py-2 w-32 bg-white dark:bg-transparent"
-      />
-      <Button onClick={() => onJoin(code)}>Join</Button>
     </div>
   );
 }
