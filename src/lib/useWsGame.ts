@@ -25,7 +25,7 @@ export function useWsGame() {
 
   // --- debug helpers ---------------------------------------------------------
   const DEBUG = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("debug") === "1";
-  const dbg = (...args: any[]) => console.debug("[game]", ...args);
+  const dbg = (...args: any[]) => console.log("[game]", ...args)
   const setStatus = (s: Status) => {
     dbg("status →", s);
     _setStatus(s);
