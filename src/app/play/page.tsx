@@ -3,7 +3,7 @@
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import NextDynamic from "next/dynamic";
 import { supabase } from "@/lib/supabaseClient";
@@ -43,6 +43,7 @@ function PlayPageInner() {
     joinRoom,
     startGame,
     sendMove,
+    reset, // <-- added (if your hook exposes it)
   } = useWsGame();
 
   // keep local “logged in?” flag in client
@@ -65,8 +66,38 @@ function PlayPageInner() {
   }, [hostCode]);
 
   const onCellClick = (b: number, c: number) => {
+    // Guard: don't allow moves if ended (server already blocks, but this keeps UX tight)
+    if (status === "ended" || state?.ended) return;
     if (status === "playing") sendMove(b, c);
   };
+
+  // Determine winner robustly
+  const winner = useMemo<"X" | "O" | null>(() => {
+    if (!state) return null;
+    if (state.overallWinner) return state.overallWinner;
+
+    // Fallback: look for a 3-in-a-row in winnerBoards
+    const b = state.winnerBoards ?? [];
+    if (b.length !== 9) return null;
+    const lines = [
+      [0, 1, 2],
+      [3, 4, 5],
+      [6, 7, 8],
+      [0, 3, 6],
+      [1, 4, 7],
+      [2, 5, 8],
+      [0, 4, 8],
+      [2, 4, 6],
+    ] as const;
+    for (const [a, c, d] of lines) {
+      const v = b[a];
+      if (v && v === b[c] && v === b[d]) return v;
+    }
+    return null; // could be a draw
+  }, [state]);
+
+  const ended =
+    status === "ended" || state?.ended || state?.overallWinner !== null;
 
   // --- UI ---
   return (
@@ -78,8 +109,47 @@ function PlayPageInner() {
         </div>
       </div>
 
-      {/* Lobby panel */}
-      {status !== "playing" && (
+      {/* NEW: End screen (shown before lobby panel) */}
+      {state && ended && (
+        <div className="rounded-xl border p-6 text-center bg-white/80 dark:bg-zinc-900/40 shadow-sm space-y-4">
+          <h2 className="text-xl font-semibold">
+            {winner ? `${winner} wins!` : "Draw!"}
+          </h2>
+          <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            Play again with the same lobby?
+          </p>
+          <div className="flex items-center justify-center gap-3">
+            <Button
+              onClick={() => {
+                // Prefer dedicated reset if your hook exposes it; otherwise fallback to startGame
+                (reset ?? startGame)?.();
+              }}
+            >
+              Rematch
+            </Button>
+            {roomCode && (
+              <Button
+                variant="secondary"
+                onClick={() =>
+                  navigator.clipboard.writeText(
+                    `${window.location.origin}/play?join=${roomCode}`
+                  )
+                }
+              >
+                Copy Invite
+              </Button>
+            )}
+          </div>
+          {roomCode && (
+            <p className="mt-2 text-xs text-zinc-500">
+              Room code: <span className="font-mono">{roomCode}</span>
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Lobby panel — keep as-is, but don't show when the game has ended (we show end screen instead) */}
+      {!ended && status !== "playing" && (
         <div className="rounded-lg border p-4 space-y-3 bg-white/80 dark:bg-zinc-900/40">
           <div className="flex items-center justify-between">
             <div className="font-medium">Lobby</div>
