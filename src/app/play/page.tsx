@@ -44,6 +44,7 @@ function PlayPageInner() {
     startGame,
     sendMove,
     reset, // <-- added (if your hook exposes it)
+    debugSnapshot,
   } = useWsGame();
 
   // keep local “logged in?” flag in client
@@ -148,6 +149,7 @@ function PlayPageInner() {
         </div>
       )}
 
+
       {/* Lobby panel — keep as-is, but don't show when the game has ended (we show end screen instead) */}
       {!ended && status !== "playing" && (
         <div className="rounded-lg border p-4 space-y-3 bg-white/80 dark:bg-zinc-900/40">
@@ -226,6 +228,12 @@ function PlayPageInner() {
           <MultiplayerCanvas state={state} onCellClick={onCellClick} />
         </div>
       )}
+      {debugSnapshot && (
+        <pre className="text-xs bg-black/50 text-green-300 p-2 rounded max-h-40 overflow-auto">
+          {JSON.stringify(debugSnapshot, null, 2)}
+        </pre>
+      )}
     </div>
+
   );
 }
