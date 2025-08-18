@@ -43,7 +43,7 @@ function PlayPageInner() {
     joinRoom,
     startGame,
     sendMove,
-    reset, // <-- added (if your hook exposes it)
+    reset,
   } = useWsGame();
 
   // keep local “logged in?” flag in client
@@ -221,9 +221,23 @@ function PlayPageInner() {
       )}
 
       {/* Game board */}
-      {state && status === "playing" && (
+      {state && (status === "playing" || status === "ended") && (
         <div className="flex justify-center">
           <MultiplayerCanvas state={state} onCellClick={onCellClick} />
+        </div>
+      )}
+
+      {status === "ended" && (
+        <div className="fixed inset-0 z-10 flex flex-col items-center justify-center space-y-4 bg-black/50">
+          <div className="text-xl font-semibold">
+            {state?.overallWinner ?? "Game over"}
+          </div>
+          <div className="flex gap-4">
+            <Button onClick={reset}>Rematch</Button>
+            <Button variant="secondary" onClick={() => router.push("/")}>
+              Return Home
+            </Button>
+          </div>
         </div>
       )}
     </div>
