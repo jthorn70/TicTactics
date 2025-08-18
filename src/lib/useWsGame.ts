@@ -52,6 +52,9 @@ export function useWsGame() {
     };
   }, []);
 
+
+
+
   async function ensureSocket(): Promise<WebSocket> {
     // reuse open socket
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -99,6 +102,14 @@ export function useWsGame() {
 
       const getState = () => msg.payload ?? msg.state ?? null;
 
+
+      const markEndedIfNeeded = (next: GameState | null | undefined) => {
+        if (!next) return;
+        if (next.ended || next.overallWinner === "X" || next.overallWinner === "O") {
+          setStatus("ended");
+        }
+      };
+
       switch (msg.type) {
         case "hello_ok":
           // <-- this resolves ensureSocket()'s auth wait
@@ -126,6 +137,7 @@ export function useWsGame() {
           const next = getState();
           if (next) {
             setState(next);
+            markEndedIfNeeded(next);
             if (next.ended) setStatus("ended");   // <-- flip UI when server pushes an ended state
           }
           return;
@@ -137,6 +149,27 @@ export function useWsGame() {
           setState(prev =>
             prev ? { ...prev, ended: true, overallWinner: msg.winner ?? prev.overallWinner } : prev
           );
+          return;
+        }
+
+        case "game:ended":
+        case "match_ended":
+        case "matchEnded": {
+          // some servers use different names; handle them all
+          const next = getState();      // if server included a full state, apply it
+          if (next) setState(next);
+          setStatus("ended");
+          return;
+        }
+        default: {
+          // temporary logger so you can see EXACT message names/payloads coming in
+          // (remove once you're confident)
+          const sample = typeof msg?.payload === "object" ? msg.payload : msg;
+          console.debug("[WS IN]", msg?.type, {
+            ended: sample?.ended,
+            overallWinner: sample?.overallWinner,
+            keys: sample && typeof sample === "object" ? Object.keys(sample) : null,
+          });
           return;
         }
 
